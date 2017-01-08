@@ -1538,6 +1538,7 @@ GSTextureCache::Surface::Surface(GSRenderer* r, uint8* temp)
 	, m_temp(temp)
 	, m_32_bits_fmt(false)
 	, m_shared_texture(false)
+	, m_pages(nullptr)
 {
 	m_TEX0.TBP0 = 0x3fff;
 }
@@ -1979,10 +1980,10 @@ void GSTextureCache::SourceMap::Add(Source* s, const GIFRegTEX0& TEX0, GSOffset*
 	// Remaining code will compute a list of pages that are dirty (in a similar fashion as GSOffset::GetPages)
 	// (Maybe GetPages could be used instead, perf opt?)
 	// The source pointer will be stored/duplicated in all m_map[array of pages]
-	uint32* pages = GetPagesCoverage(TEX0, off);
+	s->m_pages = GetPagesCoverage(TEX0, off);
 	for(size_t i = 0; i < countof(m_pages); i++)
 	{
-		if(uint32 p = pages[i])
+		if(uint32 p = s->m_pages[i])
 		{
 			list<Source*>* m = &m_map[i << 5];
 
@@ -2068,17 +2069,51 @@ void GSTextureCache::SourceMap::RemoveAt(Source* s)
 				s->m_texture ? s->m_texture->GetID() : 0,
 				s->m_TEX0.TBP0);
 
-	// Source (except render target) is duplicated for each page they use.
-	for(size_t start = s->m_TEX0.TBP0 >> 5, end = s->m_target ? start : countof(m_map) - 1; start <= end; start++)
-	{
-		list<Source*>& m = m_map[start];
-
-		for(list<Source*>::iterator i = m.begin(); i != m.end(); )
+	if (s->m_target) {
+		list<Source*>& m = m_map[s->m_TEX0.TBP0 >> 5];
+		for(auto lst_it = m.begin(); lst_it != m.end(); )
 		{
-			list<Source*>::iterator j = i++;
+			auto tex_it = lst_it++;
 
-			if(*j == s) {m.erase(j); break;}
+			if(*tex_it == s) {m.erase(tex_it); break;}
 		}
+	} else {
+#if 1
+		for(size_t i = 0; i < countof(m_pages); i++)
+		{
+			if(uint32 p = s->m_pages[i])
+			{
+				list<Source*>* m = &m_map[i << 5];
+
+				unsigned long j;
+
+				while(_BitScanForward(&j, p))
+				{
+					p ^= 1 << j;
+
+					for(auto lst_it = m[j].begin(); lst_it != m[j].end(); )
+					{
+						auto tex_it = lst_it++;
+
+						if(*tex_it == s) {m[j].erase(tex_it); break;}
+					}
+				}
+			}
+		}
+#else
+		// Source (except render target) is duplicated for each page they use.
+		for(size_t start = s->m_TEX0.TBP0 >> 5, end = countof(m_map); start < end; start++)
+		{
+			list<Source*>& m = m_map[start];
+
+			for(list<Source*>::iterator i = m.begin(); i != m.end(); )
+			{
+				list<Source*>::iterator j = i++;
+
+				if(*j == s) {m.erase(j); break;}
+			}
+		}
+#endif
 	}
 
 	delete s;
