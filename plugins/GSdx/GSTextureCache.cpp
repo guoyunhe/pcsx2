@@ -2037,12 +2037,9 @@ uint32* GSTextureCache::SourceMap::GetPagesCoverage(const GIFRegTEX0& TEX0, GSOf
 
 		for(int x = 0; x < tw; x += bs.x)
 		{
-			uint32 page = (base + off->block.col[x >> 3]) >> 5;
+			uint32 page = ((base + off->block.col[x >> 3]) >> 5) % MAX_PAGES;
 
-			if(page < MAX_PAGES)
-			{
-				pages[page >> 5] |= 1 << (page & 31);
-			}
+			pages[page >> 5] |= 1 << (page & 31);
 		}
 	}
 
